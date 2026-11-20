@@ -1,0 +1,6 @@
+{
+  "name": "KalaOrder",
+  "description": "Aplikasi kasir POS, manajemen antrean dapur, katalog menu, dan simulasi bot WhatsApp untuk UMKM kuliner Indonesia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

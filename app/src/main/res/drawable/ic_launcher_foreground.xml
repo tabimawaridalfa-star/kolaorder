@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Bold stylized POS order receipt silhouette centered inside 66dp safe zone -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M34,26 C31.79,26 30,27.79 30,30 L30,80 L36.5,75.5 L43,80 L49.5,75.5 L54,78.5 L58.5,75.5 L65,80 L71.5,75.5 L78,80 L78,30 C78,27.79 76.21,26 74,26 Z" />
+    <!-- Crisp order header bar & queue lines in primary emerald -->
+    <path
+        android:fillColor="#FF047857"
+        android:pathData="M39,36 L69,36 C70.1,36 71,36.9 71,38 C71,39.1 70.1,40 69,40 L39,40 C37.9,40 37,39.1 37,38 C37,36.9 37.9,36 39,36 Z" />
+    <path
+        android:fillColor="#FF047857"
+        android:pathData="M39,45 L57,45 C58.1,45 59,45.9 59,47 C59,48.1 58.1,49 57,49 L39,49 C37.9,49 37,48.1 37,47 C37,45.9 37.9,45 39,45 Z" />
+    <!-- Emerald confirmation badge circle & checkmark -->
+    <path
+        android:fillColor="#FF047857"
+        android:pathData="M54,53 A10,10 0 1,0 54,73 A10,10 0 1,0 54,53 Z" />
+    <path
+        android:fillColor="#FF9FFDD3"
+        android:pathData="M52.2,66.8 L48.4,63.0 L50.1,61.3 L52.2,63.4 L57.9,57.7 L59.6,59.4 Z" />
+</vector>

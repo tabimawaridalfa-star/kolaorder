@@ -1,0 +1,74 @@
+<resources>
+    <string name="app_name">KalaOrder</string>
+    <string name="store_subtitle">Warung Nusantara • Kasir UMKM</string>
+
+    <!-- Navigation -->
+    <string name="nav_antrean">Antrean</string>
+    <string name="nav_menu">Menu</string>
+    <string name="nav_riwayat">Riwayat</string>
+    <string name="nav_bot">Bot WA</string>
+
+    <!-- Store & Bot Status -->
+    <string name="status_toko_buka">TOKO BUKA</string>
+    <string name="status_toko_tutup">TOKO TUTUP</string>
+    <string name="bot_active_title">Bot WhatsApp Aktif</string>
+    <string name="bot_paused_title">Bot WhatsApp Dijeda</string>
+    <string name="bot_active_subtitle">Menerima pesanan otomatis dari pelanggan</string>
+    <string name="bot_paused_subtitle">Pesanan WhatsApp sementara tidak dibalas otomatis</string>
+    <string name="notification_listener_label">KalaOrder Bot Notifikasi WA</string>
+    <string name="btn_jeda">Jeda</string>
+    <string name="btn_aktifkan">Aktifkan</string>
+    <string name="btn_atur_izin">Aktifkan Akses Notifikasi</string>
+    <string name="btn_pengaturan_izin">Pengaturan Izin</string>
+    <string name="btn_bersihkan_log">Bersihkan</string>
+    <string name="btn_kirim_wa">Kirim WA</string>
+
+    <!-- Metrics -->
+    <string name="metric_active_queue">Antrean Aktif</string>
+    <string name="metric_today_revenue">Omzet Hari Ini</string>
+    <string name="metric_total_orders">Total Transaksi</string>
+    <string name="metric_completed">Selesai</string>
+    <string name="metric_cancelled">Dibatalkan</string>
+
+    <!-- Order Statuses -->
+    <string name="status_all">Semua</string>
+    <string name="status_menunggu">Menunggu</string>
+    <string name="status_diproses">Diproses</string>
+    <string name="status_selesai">Selesai</string>
+    <string name="status_dibatalkan">Dibatalkan</string>
+
+    <!-- Actions -->
+    <string name="action_proses_pesanan">Proses Pesanan</string>
+    <string name="action_tandai_selesai">Tandai Selesai</string>
+    <string name="action_tolak">Tolak</string>
+    <string name="action_lihat_struk">Lihat Struk</string>
+    <string name="action_detail">Detail</string>
+    <string name="action_simulasi_wa">Simulasi WA</string>
+    <string name="action_tambah_menu">Tambah Menu</string>
+    <string name="action_sunting">Sunting</string>
+    <string name="action_hapus">Hapus</string>
+    <string name="action_simpan">Simpan</string>
+    <string name="action_batal">Batal</string>
+    <string name="action_tutup">Tutup</string>
+    <string name="action_buat_pesanan">Pesanan Baru</string>
+
+    <!-- Search placeholders -->
+    <string name="search_order_placeholder">Cari kode KO- atau nama pelanggan…</string>
+    <string name="search_menu_placeholder">Cari kode A1 atau nama menu…</string>
+    <string name="search_history_placeholder">Cari kode transaksi atau pelanggan…</string>
+
+    <!-- Table headers -->
+    <string name="table_col_kode">Kode</string>
+    <string name="table_col_pelanggan">Pelanggan</string>
+    <string name="table_col_waktu">Waktu</string>
+    <string name="table_col_total">Total</string>
+    <string name="table_col_status">Status</string>
+
+    <!-- Empty States -->
+    <string name="empty_queue_title">Belum ada pesanan pada filter ini</string>
+    <string name="empty_queue_desc">Gunakan tombol Simulasi WA atau Pesanan Baru untuk menambahkan pesanan ke antrean dapur.</string>
+    <string name="empty_menu_title">Menu tidak ditemukan</string>
+    <string name="empty_menu_desc">Ubah kata kunci pencarian atau tambahkan item menu baru ke katalog warung.</string>
+    <string name="empty_history_title">Belum ada riwayat transaksi</string>
+    <string name="empty_history_desc">Transaksi yang masuk akan tercatat otomatis di tabel ini.</string>
+</resources>
