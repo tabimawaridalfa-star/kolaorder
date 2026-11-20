@@ -264,13 +264,14 @@ fun BotStatusBannerCard(
     botActive: Boolean,
     storeOpen: Boolean,
     isNotificationAccessGranted: Boolean,
+    missingBackgroundPermissions: Int,
     waitingCount: Int,
     onToggleBot: () -> Unit,
     onOpenPermissionSettings: () -> Unit,
     onBannerClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isFullyOperational = isNotificationAccessGranted && botActive && storeOpen
+    val isFullyOperational = isNotificationAccessGranted && missingBackgroundPermissions == 0 && botActive && storeOpen
     val bg = if (isFullyOperational) PrimarySoft else StatusMenungguBg
     val border = if (isFullyOperational) StatusSelesaiBorder else StatusMenungguBorder
     val accent = if (isFullyOperational) PrimaryEmerald else StatusMenungguText
@@ -315,7 +316,8 @@ fun BotStatusBannerCard(
                 Text(
                     text = when {
                         !isNotificationAccessGranted -> "Izin Notifikasi WA Belum Aktif"
-                        botActive -> "Bot Notifikasi WA Aktif"
+                        missingBackgroundPermissions > 0 -> "Siaga Layar Mati Belum Lengkap"
+                        botActive -> "Bot WA Siaga 24 Jam Aktif"
                         else -> stringResource(R.string.bot_paused_title)
                     },
                     style = MaterialTheme.typography.titleSmall,
@@ -327,9 +329,10 @@ fun BotStatusBannerCard(
                 Text(
                     text = when {
                         !isNotificationAccessGranted -> "Aktifkan Akses Notifikasi agar bot otomatis membalas WA"
+                        missingBackgroundPermissions > 0 -> "Lengkapi $missingBackgroundPermissions izin latar belakang di tab Bot WA"
                         !storeOpen -> "Toko tutup • Bot otomatis balas pesan toko tutup"
-                        botActive && waitingCount > 0 -> "$waitingCount pesanan menunggu • Baca & balas notif WA aktif"
-                        botActive -> "Mendengarkan notif WhatsApp & WA Business"
+                        botActive && waitingCount > 0 -> "$waitingCount pesanan menunggu • Siaga layar mati aktif"
+                        botActive -> "Aktif di luar aplikasi & saat layar HP mati"
                         else -> stringResource(R.string.bot_paused_subtitle)
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -345,7 +348,11 @@ fun BotStatusBannerCard(
                     .testTag("bot_banner_toggle_button")
                     .clip(KalaOrderShapes.Medium)
                     .clickable(
-                        onClick = if (!isNotificationAccessGranted) onOpenPermissionSettings else onToggleBot
+                        onClick = when {
+                            !isNotificationAccessGranted -> onOpenPermissionSettings
+                            missingBackgroundPermissions > 0 -> onBannerClick
+                            else -> onToggleBot
+                        }
                     ),
                 shape = KalaOrderShapes.Medium,
                 color = SurfaceWhite,
@@ -356,7 +363,7 @@ fun BotStatusBannerCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    if (isNotificationAccessGranted) {
+                    if (isNotificationAccessGranted && missingBackgroundPermissions == 0) {
                         Icon(
                             imageVector = if (botActive) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                             contentDescription = if (botActive) "Jeda bot" else "Aktifkan bot",
@@ -367,6 +374,7 @@ fun BotStatusBannerCard(
                     Text(
                         text = when {
                             !isNotificationAccessGranted -> "Izinkan"
+                            missingBackgroundPermissions > 0 -> "Atur"
                             botActive -> stringResource(R.string.btn_jeda)
                             else -> stringResource(R.string.btn_aktifkan)
                         },

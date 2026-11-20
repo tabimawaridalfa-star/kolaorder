@@ -16,6 +16,8 @@ data class BotReplyDecision(
     val replyText: String? = null,
     val outcome: BotLogOutcome? = null,
     val createdOrderCode: String? = null,
+    val createdOrderTotal: Int? = null,
+    val createdOrderSummary: String? = null,
 )
 
 class WhatsAppAutoReplyEngine(
@@ -279,11 +281,14 @@ class WhatsAppAutoReplyEngine(
                 replyPreview = "Order $orderCode (${RupiahFormatter.format(total)}) • Struk dikirim",
                 outcome = BotLogOutcome.CREATED_ORDER,
             )
+            val itemSummary = parsedItems.joinToString(", ") { "${it.quantity}x ${it.menuName}" }
             return BotReplyDecision(
                 shouldReply = true,
                 replyText = receiptReply,
                 outcome = BotLogOutcome.CREATED_ORDER,
                 createdOrderCode = orderCode,
+                createdOrderTotal = total,
+                createdOrderSummary = itemSummary,
             )
         }
 

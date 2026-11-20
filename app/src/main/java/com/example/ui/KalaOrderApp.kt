@@ -1,6 +1,10 @@
 package com.example.ui
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -111,9 +115,22 @@ fun KalaOrderApp(
     var editingMenuItem by remember { mutableStateOf<MenuItemRecord?>(null) }
     var deletingMenuItem by remember { mutableStateOf<MenuItemRecord?>(null) }
 
-    // Automatically refresh Android Notification Access status whenever user returns from Settings
+    // Runtime permission launcher for Android 13+ POST_NOTIFICATIONS
+    val postNotificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.refreshSystemReadiness()
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                if (granted) "Izin notifikasi aktif • Order baru akan berbunyi & bergetar"
+                else "Izin notifikasi ditolak • Aktifkan dari Info Aplikasi agar siaga 24 jam tampil"
+            )
+        }
+    }
+
+    // Automatically refresh Notification Access, POST_NOTIFICATIONS, Battery Exemption & FGS status on resume
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        viewModel.refreshNotificationAccessState()
+        viewModel.refreshSystemReadiness()
     }
 
     // Back gesture from secondary tabs returns gracefully to Antrean home tab
@@ -127,8 +144,30 @@ fun KalaOrderApp(
         }
     }
 
-    val openPermissionSettings = remember(context) {
+    val openNotificationAccessSettings = remember(context) {
         { NotificationAccessHelper.openNotificationAccessSettings(context) }
+    }
+
+    val requestPostNotifications = remember(context, postNotificationLauncher) {
+        {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (NotificationAccessHelper.isPostNotificationsGranted(context)) {
+                    NotificationAccessHelper.openAppDetailsSettings(context)
+                } else {
+                    postNotificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            } else {
+                NotificationAccessHelper.openAppDetailsSettings(context)
+            }
+        }
+    }
+
+    val requestBatteryExemption = remember(context) {
+        { NotificationAccessHelper.requestIgnoreBatteryOptimizations(context) }
+    }
+
+    val openAppSettings = remember(context) {
+        { NotificationAccessHelper.openAppDetailsSettings(context) }
     }
 
     BoxWithConstraints(
@@ -195,7 +234,7 @@ fun KalaOrderApp(
                                 uiState = uiState,
                                 onToggleStoreOpen = viewModel::toggleStoreOpen,
                                 onToggleBotActive = viewModel::toggleBotActive,
-                                onOpenNotificationSettings = openPermissionSettings,
+                                onOpenNotificationSettings = openNotificationAccessSettings,
                                 onOpenBotTab = { activeTab = AppTab.BOT },
                                 onSearchChange = viewModel::onQueueSearchChange,
                                 onFilterSelect = viewModel::onQueueFilterSelect,
@@ -232,7 +271,11 @@ fun KalaOrderApp(
                             AppTab.BOT -> BotSettingsScreen(
                                 uiState = uiState,
                                 onToggleStoreOpen = viewModel::toggleStoreOpen,
-                                onOpenNotificationSettings = openPermissionSettings,
+                                onOpenNotificationSettings = openNotificationAccessSettings,
+                                onRequestPostNotifications = requestPostNotifications,
+                                onRequestBatteryExemption = requestBatteryExemption,
+                                onRefreshKeepAliveService = viewModel::startOrRefreshKeepAliveService,
+                                onOpenAppSettings = openAppSettings,
                                 onUpdateSettings = viewModel::updateBotSettings,
                                 onClearBotLogs = viewModel::clearBotLogs,
                                 onResetCooldowns = viewModel::resetContactCooldowns,

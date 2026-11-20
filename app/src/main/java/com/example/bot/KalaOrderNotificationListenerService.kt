@@ -1,13 +1,17 @@
 package com.example.bot
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.app.RemoteInput
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.RemoteInput as CompatRemoteInput
 import com.example.data.BotLogOutcome
 import com.example.data.KalaOrderRepository
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +26,25 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
 
     private val repository by lazy { KalaOrderRepository.fromContext(applicationContext) }
     private val autoReplyEngine by lazy { WhatsAppAutoReplyEngine(repository) }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Log.i(TAG, "NotificationListener connected — ensuring 24h keep-alive service")
+        serviceScope.launch {
+            runCatching {
+                val settings = repository.getBotSettingsSnapshot()
+                if (settings.botActive) {
+                    KalaOrderBotKeepAliveService.startOrUpdate(applicationContext)
+                }
+            }
+        }
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.w(TAG, "NotificationListener disconnected — requesting automatic rebind")
+        NotificationAccessHelper.requestListenerRebind(applicationContext)
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val statusBarNotification = sbn ?: return
@@ -41,6 +64,9 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
         val extracted = extractIncomingMessage(notification) ?: return
 
         val sourceLabel = if (pkg == PACKAGE_WHATSAPP_BUSINESS) "WA Business" else "WhatsApp"
+
+        // Acquire a brief partial WakeLock so screen-off Doze does not interrupt DB write or Direct Reply
+        val wakeLock = acquireBriefWakeLock()
 
         serviceScope.launch {
             try {
@@ -72,8 +98,21 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
                         )
                     }
                 }
+
+                // Sound + vibrate alert for new orders even while the phone screen is off
+                if (decision.createdOrderCode != null && decision.createdOrderTotal != null) {
+                    BotNotificationChannels.notifyNewOrder(
+                        context = applicationContext,
+                        orderCode = decision.createdOrderCode,
+                        customerName = extracted.senderName,
+                        totalAmount = decision.createdOrderTotal,
+                        itemSummary = decision.createdOrderSummary.orEmpty(),
+                    )
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling WhatsApp notification", e)
+            } finally {
+                releaseWakeLockSafely(wakeLock)
             }
         }
     }
@@ -83,12 +122,51 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
         serviceScope.cancel()
     }
 
-    private fun findDirectReplyAction(notification: Notification): Notification.Action? {
-        val actions = notification.actions ?: return null
-        return actions.firstOrNull { action ->
-            val inputs = action.remoteInputs
-            inputs != null && inputs.isNotEmpty() && action.actionIntent != null
+    private fun acquireBriefWakeLock(): PowerManager.WakeLock? {
+        return runCatching {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return null
+            pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "KalaOrder::WhatsAppReplyWakeLock",
+            ).apply {
+                setReferenceCounted(false)
+                acquire(WAKE_LOCK_TIMEOUT_MS)
+            }
+        }.getOrNull()
+    }
+
+    private fun releaseWakeLockSafely(wakeLock: PowerManager.WakeLock?) {
+        runCatching {
+            if (wakeLock != null && wakeLock.isHeld) {
+                wakeLock.release()
+            }
         }
+    }
+
+    /**
+     * Checks both standard Notification.actions and WearableExtender actions, because
+     * WhatsApp sometimes exposes its Direct Reply RemoteInput only in WearableExtender
+     * when the phone screen is locked or notifications are bundled.
+     */
+    private fun findDirectReplyAction(notification: Notification): ReplyTarget? {
+        notification.actions?.forEach { action ->
+            val inputs = action.remoteInputs
+            val pendingIntent = action.actionIntent
+            if (inputs != null && inputs.isNotEmpty() && pendingIntent != null) {
+                return ReplyTarget.Framework(pendingIntent, inputs)
+            }
+        }
+
+        val wearableActions = NotificationCompat.WearableExtender(notification).actions
+        wearableActions.forEach { action ->
+            val inputs = action.remoteInputs
+            val pendingIntent = action.actionIntent
+            if (inputs != null && inputs.isNotEmpty() && pendingIntent != null) {
+                return ReplyTarget.Compat(pendingIntent, inputs)
+            }
+        }
+
+        return null
     }
 
     private fun extractIncomingMessage(notification: Notification): ExtractedNotification? {
@@ -98,7 +176,6 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
         val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
 
-        // Prefer MessagingStyle latest message for accuracy on stacked WhatsApp notifications
         val messagingStyle = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
         val latestStyleMessage = messagingStyle?.messages?.lastOrNull()
 
@@ -109,12 +186,10 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
 
         if (messageText.isBlank()) return null
 
-        // Ignore WhatsApp self/system placeholder messages
         val lowerText = messageText.lowercase()
         if (lowerText.contains("pesan baru") && lowerText.contains("chat")) return null
         if (lowerText.startsWith("anda:") || lowerText.startsWith("you:")) return null
 
-        // Detect group chats reliably across WhatsApp versions
         val isGroupByColon = rawTitle.contains(":") && !rawTitle.startsWith("+")
         val isGroupByStyle = messagingStyle?.isGroupConversation == true
         val isGroup = isGroupFlag || isGroupByStyle || !conversationTitle.isNullOrBlank() || isGroupByColon
@@ -125,7 +200,6 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
             else -> "Pelanggan WA"
         }
 
-        // Ignore own reply echoed back by WhatsApp
         if (senderName.equals("Anda", ignoreCase = true) || senderName.equals("You", ignoreCase = true)) {
             return null
         }
@@ -137,21 +211,42 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
         )
     }
 
-    private fun dispatchDirectReply(action: Notification.Action, replyText: String): Boolean {
-        val remoteInputs = action.remoteInputs ?: return false
-        val pendingIntent = action.actionIntent ?: return false
+    private fun dispatchDirectReply(target: ReplyTarget, replyText: String): Boolean {
         return runCatching {
             val replyIntent = Intent()
             val resultsBundle = Bundle()
-            for (input in remoteInputs) {
-                resultsBundle.putCharSequence(input.resultKey, replyText)
+            when (target) {
+                is ReplyTarget.Framework -> {
+                    for (input in target.remoteInputs) {
+                        resultsBundle.putCharSequence(input.resultKey, replyText)
+                    }
+                    RemoteInput.addResultsToIntent(target.remoteInputs, replyIntent, resultsBundle)
+                    target.pendingIntent.send(applicationContext, 0, replyIntent)
+                }
+                is ReplyTarget.Compat -> {
+                    for (input in target.remoteInputs) {
+                        resultsBundle.putCharSequence(input.resultKey, replyText)
+                    }
+                    CompatRemoteInput.addResultsToIntent(target.remoteInputs, replyIntent, resultsBundle)
+                    target.pendingIntent.send(applicationContext, 0, replyIntent)
+                }
             }
-            RemoteInput.addResultsToIntent(remoteInputs, replyIntent, resultsBundle)
-            pendingIntent.send(applicationContext, 0, replyIntent)
             true
         }.onFailure { err ->
             Log.e(TAG, "Direct reply dispatch failed", err)
         }.getOrDefault(false)
+    }
+
+    private sealed class ReplyTarget {
+        data class Framework(
+            val pendingIntent: PendingIntent,
+            val remoteInputs: Array<RemoteInput>,
+        ) : ReplyTarget()
+
+        data class Compat(
+            val pendingIntent: PendingIntent,
+            val remoteInputs: Array<CompatRemoteInput>,
+        ) : ReplyTarget()
     }
 
     private data class ExtractedNotification(
@@ -162,6 +257,7 @@ class KalaOrderNotificationListenerService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "KalaOrderNotifBot"
+        private const val WAKE_LOCK_TIMEOUT_MS = 8_000L
         const val PACKAGE_WHATSAPP = "com.whatsapp"
         const val PACKAGE_WHATSAPP_BUSINESS = "com.whatsapp.w4b"
     }

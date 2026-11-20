@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,14 +18,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PointOfSale
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +50,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +99,10 @@ fun BotSettingsScreen(
     uiState: KalaOrderUiState,
     onToggleStoreOpen: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
+    onRequestPostNotifications: () -> Unit,
+    onRequestBatteryExemption: () -> Unit,
+    onRefreshKeepAliveService: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     onUpdateSettings: (BotSettings, String?) -> Unit,
     onClearBotLogs: () -> Unit,
     onResetCooldowns: () -> Unit,
@@ -99,7 +111,8 @@ fun BotSettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val settings = uiState.botSettings
-    val hasAccess = uiState.isNotificationAccessGranted
+    val readiness = uiState.readiness
+    val hasAccess = readiness.notificationAccessGranted
 
     var storeNameDraft by remember { mutableStateOf(settings.storeName) }
     var welcomeDraft by remember { mutableStateOf(settings.welcomeMessageTemplate) }
@@ -118,7 +131,7 @@ fun BotSettingsScreen(
         closedDraft = settings.closedStoreTemplate
     }
 
-    val isFullyLive = hasAccess && settings.botActive && settings.storeOpen
+    val isFullyLive = readiness.isFullyReady24h && settings.botActive && settings.storeOpen
     val pulseAlpha = rememberPulsingAlpha(enabled = isFullyLive)
 
     val livePreviewSettings = settings.copy(
@@ -155,7 +168,7 @@ fun BotSettingsScreen(
                         color = TextPrimary,
                     )
                     Text(
-                        text = "Baca & balas notifikasi WA otomatis tanpa langganan",
+                        text = "Siaga 24 jam di luar aplikasi & layar mati tanpa langganan",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                     )
@@ -167,7 +180,7 @@ fun BotSettingsScreen(
             }
         }
 
-        // Hero Card: Android Notification Access Permission + Live Connection Status
+        // Hero Card: Live 24h Background Status
         item(key = "bot_permission_hero") {
             val heroBg = if (isFullyLive) PrimarySoft else StatusMenungguBg
             val heroBorder = if (isFullyLive) StatusSelesaiBorder else StatusMenungguBorder
@@ -191,12 +204,12 @@ fun BotSettingsScreen(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = if (hasAccess) {
+                                imageVector = if (isFullyLive) {
                                     Icons.Outlined.NotificationsActive
                                 } else {
                                     Icons.Outlined.NotificationsOff
                                 },
-                                contentDescription = "Status Akses Notifikasi",
+                                contentDescription = "Status Siaga Bot",
                                 tint = heroAccent,
                                 modifier = Modifier.size(24.dp),
                             )
@@ -216,9 +229,11 @@ fun BotSettingsScreen(
                             Text(
                                 text = when {
                                     !hasAccess -> "Akses Notifikasi Belum Aktif"
-                                    !settings.botActive -> "Izin Aktif • Bot Dijeda"
-                                    !settings.storeOpen -> "Izin Aktif • Mode Toko Tutup"
-                                    else -> "Terhubung • Mendengarkan Notif WA"
+                                    readiness.missingSetupCount > 0 -> "Lengkapi ${readiness.missingSetupCount} Izin Layar Mati"
+                                    !settings.botActive -> "Siap 24 Jam • Bot Dijeda"
+                                    !settings.storeOpen -> "Siaga 24 Jam • Mode Toko Tutup"
+                                    !readiness.keepAliveServiceRunning -> "Menyambungkan Layanan Siaga…"
+                                    else -> "Siaga 24 Jam • Aktif Saat Layar Mati"
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 color = TextPrimary,
@@ -226,10 +241,10 @@ fun BotSettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (hasAccess) {
-                                "Pastikan notifikasi WA tidak dibisukan agar Direct Reply berjalan otomatis."
+                            text = if (isFullyLive) {
+                                "Foreground Service aktif & otomatis menyala ulang setelah HP restart. Order baru akan berbunyi + bergetar."
                             } else {
-                                "Aktifkan izin Akses Notifikasi Android untuk KalaOrder agar bot bisa membalas chat WA secara gratis."
+                                "Lengkapi checklist di bawah agar bot tetap membalas WhatsApp di luar aplikasi maupun saat layar HP terkunci."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary,
@@ -238,18 +253,6 @@ fun BotSettingsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-
-                if (!hasAccess) {
-                    KalaPrimaryButton(
-                        text = stringResource(R.string.btn_atur_izin),
-                        onClick = onOpenNotificationSettings,
-                        icon = Icons.Outlined.NotificationsActive,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("grant_notification_access_button"),
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -264,13 +267,137 @@ fun BotSettingsScreen(
                             .testTag("bot_screen_simulator_button"),
                     )
                     KalaSecondaryButton(
-                        text = if (hasAccess) stringResource(R.string.btn_pengaturan_izin) else "Order Kasir",
-                        onClick = if (hasAccess) onOpenNotificationSettings else onOpenManualOrder,
-                        icon = if (hasAccess) Icons.Outlined.Security else Icons.Outlined.PointOfSale,
+                        text = "Order Kasir",
+                        onClick = onOpenManualOrder,
+                        icon = Icons.Outlined.PointOfSale,
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("bot_screen_secondary_action"),
+                            .testTag("bot_screen_manual_order_button"),
                     )
+                }
+            }
+        }
+
+        // 24-Hour Screen-Off & Background Readiness Checklist
+        item(key = "bot_24h_checklist") {
+            KalaOrderCard(contentPadding = PaddingValues(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Kesiapan Siaga 24 Jam & Layar Mati",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = "Wajib aktif agar bot tidak dimatikan sistem saat keluar aplikasi",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
+                    SemanticPillBadge(
+                        text = if (readiness.isFullyReady24h) "4/4 Siap" else "${4 - readiness.missingSetupCount - if (readiness.keepAliveServiceRunning) 0 else 1}/4",
+                        backgroundColor = if (readiness.isFullyReady24h) StatusSelesaiBg else StatusMenungguBg,
+                        textColor = if (readiness.isFullyReady24h) StatusSelesaiText else StatusMenungguText,
+                        borderColor = if (readiness.isFullyReady24h) StatusSelesaiBorder else StatusMenungguBorder,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                ReadinessCheckRow(
+                    icon = Icons.Outlined.Security,
+                    title = "1. Akses Notifikasi WhatsApp",
+                    subtitle = "Membaca & membalas notif WA dan WA Business langsung",
+                    isReady = readiness.notificationAccessGranted,
+                    actionLabel = if (readiness.notificationAccessGranted) "Atur" else "Izinkan",
+                    onAction = onOpenNotificationSettings,
+                    testTag = "checklist_notification_access",
+                )
+                HorizontalDivider(color = BorderSubtle, modifier = Modifier.padding(vertical = 8.dp))
+
+                ReadinessCheckRow(
+                    icon = Icons.Outlined.NotificationsActive,
+                    title = "2. Izin Notifikasi & Bunyi Order",
+                    subtitle = "Menampilkan notifikasi siaga & bunyi + getar order baru",
+                    isReady = readiness.postNotificationGranted,
+                    actionLabel = if (readiness.postNotificationGranted) "Aktif" else "Izinkan",
+                    onAction = onRequestPostNotifications,
+                    testTag = "checklist_post_notifications",
+                )
+                HorizontalDivider(color = BorderSubtle, modifier = Modifier.padding(vertical = 8.dp))
+
+                ReadinessCheckRow(
+                    icon = Icons.Outlined.BatteryChargingFull,
+                    title = "3. Bebas Optimasi Baterai (Layar Mati)",
+                    subtitle = "Cegah Doze Mode mematikan bot saat layar HP terkunci",
+                    isReady = readiness.batteryOptimizationIgnored,
+                    actionLabel = if (readiness.batteryOptimizationIgnored) "Bebas" else "Bebaskan",
+                    onAction = onRequestBatteryExemption,
+                    testTag = "checklist_battery_exemption",
+                )
+                HorizontalDivider(color = BorderSubtle, modifier = Modifier.padding(vertical = 8.dp))
+
+                ReadinessCheckRow(
+                    icon = Icons.Outlined.Refresh,
+                    title = "4. Layanan Siaga 24 Jam & Auto-Boot",
+                    subtitle = "Menjaga proses tetap hidup + otomatis nyala setelah restart",
+                    isReady = readiness.keepAliveServiceRunning,
+                    actionLabel = if (readiness.keepAliveServiceRunning) "Segarkan" else "Nyalakan",
+                    onAction = onRefreshKeepAliveService,
+                    testTag = "checklist_keep_alive_service",
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // OEM Tip Box for Xiaomi / OPPO / Vivo / Realme
+                Surface(
+                    shape = KalaOrderShapes.Medium,
+                    color = FillSubtle,
+                    border = BorderStroke(1.dp, BorderSubtle),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = StatusDiprosesText,
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .size(16.dp),
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = "Tips HP Xiaomi, OPPO, Realme, & Vivo:",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                text = "Aktifkan juga Mulai Otomatis (Autostart) di Info Aplikasi dan kunci KalaOrder di layar Recent Apps agar tidak dibersihkan pembersih RAM.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                            )
+                            Text(
+                                text = "Buka Info Aplikasi →",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = PrimaryEmerald,
+                                modifier = Modifier
+                                    .testTag("open_app_info_settings")
+                                    .clickable(onClick = onOpenAppSettings)
+                                    .padding(vertical = 2.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -292,7 +419,7 @@ fun BotSettingsScreen(
                     onCheckedChange = {
                         onUpdateSettings(
                             settings.copy(botActive = it),
-                            if (it) "Bot Notifikasi WA diaktifkan" else "Bot Notifikasi WA dijeda",
+                            if (it) "Bot Notifikasi WA & Siaga 24 Jam diaktifkan" else "Bot Notifikasi WA dijeda",
                         )
                     },
                     testTag = "switch_bot_active",
@@ -562,7 +689,7 @@ fun BotSettingsScreen(
                             .padding(14.dp),
                     ) {
                         Text(
-                            text = "Belum ada notifikasi yang diproses. Aktifkan Akses Notifikasi atau tekan \"Tes Simulasi WA\" untuk mencoba balasan otomatis.",
+                            text = "Belum ada notifikasi yang diproses. Lengkapi checklist 24 jam atau tekan \"Tes Simulasi WA\" untuk mencoba balasan otomatis.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary,
                         )
@@ -575,6 +702,78 @@ fun BotSettingsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ReadinessCheckRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    isReady: Boolean,
+    actionLabel: String,
+    onAction: () -> Unit,
+    testTag: String,
+) {
+    val statusTint = if (isReady) PrimaryEmerald else StatusMenungguText
+    val chipBg = if (isReady) StatusSelesaiBg else StatusMenungguBg
+    val chipBorder = if (isReady) StatusSelesaiBorder else StatusMenungguBorder
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            imageVector = if (isReady) Icons.Outlined.CheckCircle else Icons.Outlined.WarningAmber,
+            contentDescription = if (isReady) "Siap" else "Perlu diatur",
+            tint = statusTint,
+            modifier = Modifier.size(20.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Surface(
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .testTag(testTag)
+                .clip(KalaOrderShapes.Medium)
+                .clickable(onClick = onAction),
+            shape = KalaOrderShapes.Medium,
+            color = chipBg,
+            border = BorderStroke(1.dp, chipBorder),
+        ) {
+            Text(
+                text = actionLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = statusTint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
         }
     }
 }

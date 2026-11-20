@@ -144,7 +144,8 @@ fun QueueScreen(
             BotStatusBannerCard(
                 botActive = uiState.botSettings.botActive,
                 storeOpen = uiState.botSettings.storeOpen,
-                isNotificationAccessGranted = uiState.isNotificationAccessGranted,
+                isNotificationAccessGranted = uiState.readiness.notificationAccessGranted,
+                missingBackgroundPermissions = uiState.readiness.missingSetupCount,
                 waitingCount = uiState.waitingCount,
                 onToggleBot = onToggleBotActive,
                 onOpenPermissionSettings = onOpenNotificationSettings,

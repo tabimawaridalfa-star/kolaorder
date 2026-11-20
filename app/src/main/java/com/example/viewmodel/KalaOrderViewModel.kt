@@ -3,7 +3,9 @@ package com.example.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.bot.BotNotificationChannels
 import com.example.bot.BotReplyDecision
+import com.example.bot.KalaOrderBotKeepAliveService
 import com.example.bot.NotificationAccessHelper
 import com.example.bot.WhatsAppAutoReplyEngine
 import com.example.data.BotActivityLogRecord
@@ -66,6 +68,26 @@ data class FilterState(
     val historyFilter: HistoryFilter = HistoryFilter.SEMUA,
 )
 
+data class BackgroundBotReadiness(
+    val notificationAccessGranted: Boolean = false,
+    val postNotificationGranted: Boolean = true,
+    val batteryOptimizationIgnored: Boolean = false,
+    val keepAliveServiceRunning: Boolean = false,
+) {
+    val missingSetupCount: Int
+        get() = listOf(
+            notificationAccessGranted,
+            postNotificationGranted,
+            batteryOptimizationIgnored,
+        ).count { !it }
+
+    val isFullyReady24h: Boolean
+        get() = notificationAccessGranted &&
+            postNotificationGranted &&
+            batteryOptimizationIgnored &&
+            keepAliveServiceRunning
+}
+
 data class KalaOrderUiState(
     val orders: List<OrderRecord> = emptyList(),
     val filteredQueueOrders: List<OrderRecord> = emptyList(),
@@ -74,7 +96,7 @@ data class KalaOrderUiState(
     val filteredHistoryOrders: List<OrderRecord> = emptyList(),
     val botSettings: BotSettings = BotSettings(),
     val botActivityLogs: List<BotActivityLogRecord> = emptyList(),
-    val isNotificationAccessGranted: Boolean = false,
+    val readiness: BackgroundBotReadiness = BackgroundBotReadiness(),
     val filters: FilterState = FilterState(),
     val activeQueueCount: Int = 0,
     val waitingCount: Int = 0,
@@ -83,7 +105,10 @@ data class KalaOrderUiState(
     val cancelledCount: Int = 0,
     val todayRevenue: Int = 0,
     val lowStockCount: Int = 0,
-)
+) {
+    val isNotificationAccessGranted: Boolean
+        get() = readiness.notificationAccessGranted
+}
 
 class KalaOrderViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -91,9 +116,7 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
     private val autoReplyEngine = WhatsAppAutoReplyEngine(repository)
 
     private val filterState = MutableStateFlow(FilterState())
-    private val notificationAccessGranted = MutableStateFlow(
-        NotificationAccessHelper.isNotificationAccessEnabled(application)
-    )
+    private val permissionSnapshot = MutableStateFlow(readSystemPermissions())
 
     private val _snackbarMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val snackbarMessages: SharedFlow<String> = _snackbarMessages.asSharedFlow()
@@ -110,11 +133,23 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
             CoreDataSnapshot(orders, menuItems, settings, logs)
         }
 
+        val readinessFlow = combine(
+            permissionSnapshot,
+            KalaOrderBotKeepAliveService.isRunning,
+        ) { perms, serviceRunning ->
+            BackgroundBotReadiness(
+                notificationAccessGranted = perms.notificationAccessGranted,
+                postNotificationGranted = perms.postNotificationGranted,
+                batteryOptimizationIgnored = perms.batteryOptimizationIgnored,
+                keepAliveServiceRunning = serviceRunning,
+            )
+        }
+
         uiState = combine(
             coreDataFlow,
             filterState,
-            notificationAccessGranted,
-        ) { data, filters, hasNotifAccess ->
+            readinessFlow,
+        ) { data, filters, readiness ->
             val orders = data.orders
             val menuItems = data.menuItems
             val settings = data.settings
@@ -184,7 +219,7 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
                 filteredHistoryOrders = filteredHistory,
                 botSettings = settings,
                 botActivityLogs = data.logs,
-                isNotificationAccessGranted = hasNotifAccess,
+                readiness = readiness,
                 filters = filters,
                 activeQueueCount = waiting + processing,
                 waitingCount = waiting,
@@ -202,12 +237,49 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             repository.ensureSeedData()
+            BotNotificationChannels.ensureChannels(application)
+            syncKeepAliveService()
         }
     }
 
-    fun refreshNotificationAccessState() {
-        notificationAccessGranted.value =
-            NotificationAccessHelper.isNotificationAccessEnabled(getApplication())
+    private fun readSystemPermissions(): PermissionSnapshot {
+        val app = getApplication<Application>()
+        return PermissionSnapshot(
+            notificationAccessGranted = NotificationAccessHelper.isNotificationAccessEnabled(app),
+            postNotificationGranted = NotificationAccessHelper.isPostNotificationsGranted(app),
+            batteryOptimizationIgnored = NotificationAccessHelper.isIgnoringBatteryOptimizations(app),
+        )
+    }
+
+    fun refreshSystemReadiness() {
+        permissionSnapshot.value = readSystemPermissions()
+        viewModelScope.launch {
+            syncKeepAliveService()
+        }
+    }
+
+    fun startOrRefreshKeepAliveService() {
+        val app = getApplication<Application>()
+        if (NotificationAccessHelper.isNotificationAccessEnabled(app)) {
+            NotificationAccessHelper.requestListenerRebind(app)
+        }
+        val started = KalaOrderBotKeepAliveService.startOrUpdate(app)
+        _snackbarMessages.tryEmit(
+            if (started) "Layanan Siaga 24 Jam aktif & tersambung ke notifikasi"
+            else "Tidak dapat menyalakan layanan siaga — pastikan izin notifikasi aktif"
+        )
+    }
+
+    private suspend fun syncKeepAliveService() {
+        val app = getApplication<Application>()
+        val settings = repository.getBotSettingsSnapshot()
+        val hasAccess = NotificationAccessHelper.isNotificationAccessEnabled(app)
+        if (hasAccess && settings.botActive) {
+            KalaOrderBotKeepAliveService.startOrUpdate(app)
+            NotificationAccessHelper.requestListenerRebind(app)
+        } else if (!settings.botActive && KalaOrderBotKeepAliveService.isRunning.value) {
+            KalaOrderBotKeepAliveService.stop(app)
+        }
     }
 
     // Filter updates
@@ -232,14 +304,6 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun parseWhatsAppOrder(message: String): List<OrderLineItem> {
-        return repository.parseWhatsAppMessage(message, uiState.value.menuItems)
-    }
-
-    /**
-     * Runs the exact same WhatsAppAutoReplyEngine used by the real Android NotificationListenerService,
-     * allowing the cashier to test welcome+menu replies, order codes, out-of-stock, group filter & cooldowns.
-     */
     fun simulateWhatsAppNotification(
         senderName: String,
         senderPhone: String,
@@ -248,8 +312,9 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
         onResult: (BotReplyDecision) -> Unit,
     ) {
         viewModelScope.launch {
+            val resolvedSender = senderName.ifBlank { "Pelanggan Uji" }
             val decision = autoReplyEngine.processIncomingMessage(
-                senderName = senderName.ifBlank { "Pelanggan Uji" },
+                senderName = resolvedSender,
                 senderPhoneOrTag = senderPhone.ifBlank { "+62 812-0000-0000" },
                 sourceAppLabel = "Simulasi WA",
                 incomingMessage = incomingMessage,
@@ -257,9 +322,16 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
                 bypassDuplicateCheck = true,
             )
             onResult(decision)
-            if (decision.createdOrderCode != null) {
+            if (decision.createdOrderCode != null && decision.createdOrderTotal != null) {
+                BotNotificationChannels.notifyNewOrder(
+                    context = getApplication(),
+                    orderCode = decision.createdOrderCode,
+                    customerName = resolvedSender,
+                    totalAmount = decision.createdOrderTotal,
+                    itemSummary = decision.createdOrderSummary.orEmpty(),
+                )
                 _snackbarMessages.tryEmit(
-                    "Order ${decision.createdOrderCode} masuk antrean & struk dibalas otomatis"
+                    "Order ${decision.createdOrderCode} masuk antrean & notifikasi berbunyi"
                 )
             }
         }
@@ -315,6 +387,7 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
         val next = current.copy(storeOpen = !current.storeOpen)
         viewModelScope.launch {
             repository.saveBotSettings(next)
+            syncKeepAliveService()
             _snackbarMessages.tryEmit(
                 if (next.storeOpen) "Status toko diubah ke TOKO BUKA"
                 else "Status toko diubah ke TOKO TUTUP"
@@ -327,8 +400,9 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
         val next = current.copy(botActive = !current.botActive)
         viewModelScope.launch {
             repository.saveBotSettings(next)
+            syncKeepAliveService()
             _snackbarMessages.tryEmit(
-                if (next.botActive) "Bot WhatsApp diaktifkan kembali"
+                if (next.botActive) "Bot WhatsApp & Siaga 24 Jam diaktifkan"
                 else "Bot WhatsApp dijeda sementara"
             )
         }
@@ -337,6 +411,7 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
     fun updateBotSettings(updated: BotSettings, notifyMessage: String? = null) {
         viewModelScope.launch {
             repository.saveBotSettings(updated)
+            syncKeepAliveService()
             if (notifyMessage != null) {
                 _snackbarMessages.tryEmit(notifyMessage)
             }
@@ -356,6 +431,12 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
             _snackbarMessages.tryEmit("Jeda salam semua kontak direset")
         }
     }
+
+    private data class PermissionSnapshot(
+        val notificationAccessGranted: Boolean,
+        val postNotificationGranted: Boolean,
+        val batteryOptimizationIgnored: Boolean,
+    )
 
     private data class CoreDataSnapshot(
         val orders: List<OrderRecord>,
