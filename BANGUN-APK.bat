@@ -50,13 +50,20 @@ if defined ANDROID_SDK_ROOT (
     echo Pastikan Android SDK sudah terpasang di %LOCALAPPDATA%\Android\Sdk.
 )
 
-REM 3. Siapkan debug.keystore dari debug.keystore.base64 jika belum ada
+REM 3. Siapkan debug.keystore (decode dari base64 atau buat otomatis dengan keytool)
 if not exist "debug.keystore" (
     if exist "debug.keystore.base64" (
-        echo [INFO] Menyiapkan debug.keystore...
+        echo [INFO] Menyiapkan debug.keystore dari base64...
         certutil -decode "debug.keystore.base64" "debug.keystore" >nul 2>&1
         if errorlevel 1 (
             powershell -NoProfile -Command "[IO.File]::WriteAllBytes('debug.keystore', [Convert]::FromBase64String((Get-Content 'debug.keystore.base64' -Raw)))"
+        )
+    ) else (
+        echo [INFO] Membuat debug.keystore otomatis dengan keytool...
+        keytool -genkey -v -keystore "debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        if errorlevel 1 (
+            echo [GAGAL] Tidak dapat membuat debug.keystore dengan keytool.
+            goto :failed
         )
     )
 )
