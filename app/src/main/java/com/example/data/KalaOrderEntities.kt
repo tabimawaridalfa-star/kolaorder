@@ -116,6 +116,7 @@ data class BotSettingsEntity(
     val welcomeCooldownMinutes: Int = 30,
     val welcomeMessageTemplate: String = "Selamat datang di {TOKO}! 👋\nSilakan pilih menu favorit Kakak hari ini:",
     val closedStoreTemplate: String = "Mohon maaf Kak, {TOKO} saat ini sedang TUTUP. Pesanan akan kami layani kembali saat toko buka ya!",
+    val setupCompleted: Boolean = false,
 ) {
     fun toDomain(): BotSettings = BotSettings(
         storeName = storeName,
@@ -131,6 +132,7 @@ data class BotSettingsEntity(
         welcomeCooldownMinutes = welcomeCooldownMinutes,
         welcomeMessageTemplate = welcomeMessageTemplate,
         closedStoreTemplate = closedStoreTemplate,
+        setupCompleted = setupCompleted,
     )
 
     companion object {
@@ -149,6 +151,7 @@ data class BotSettingsEntity(
             welcomeCooldownMinutes = settings.welcomeCooldownMinutes,
             welcomeMessageTemplate = settings.welcomeMessageTemplate,
             closedStoreTemplate = settings.closedStoreTemplate,
+            setupCompleted = settings.setupCompleted,
         )
     }
 }
@@ -182,4 +185,40 @@ data class BotActivityLogEntity(
         timestampLabel = timestampLabel,
         createdAtMillis = createdAtMillis,
     )
+}
+
+@Entity(tableName = "cashflow_entries")
+data class CashflowEntryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val type: String,
+    val category: String,
+    val title: String,
+    val amount: Int,
+    val note: String,
+    val dateLabel: String,
+    val createdAtMillis: Long,
+) {
+    fun toRecord(): CashflowEntryRecord = CashflowEntryRecord(
+        id = id,
+        type = CashflowType.fromKey(type),
+        category = category,
+        title = title,
+        amount = amount,
+        note = note,
+        dateLabel = dateLabel,
+        createdAtMillis = createdAtMillis,
+    )
+
+    companion object {
+        fun fromRecord(record: CashflowEntryRecord): CashflowEntryEntity = CashflowEntryEntity(
+            id = record.id,
+            type = record.type.name,
+            category = record.category.trim().ifBlank { CashflowCategories.forType(record.type).first() },
+            title = record.title.trim(),
+            amount = record.amount.coerceAtLeast(0),
+            note = record.note.trim(),
+            dateLabel = record.dateLabel,
+            createdAtMillis = record.createdAtMillis,
+        )
+    }
 }

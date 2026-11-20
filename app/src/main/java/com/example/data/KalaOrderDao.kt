@@ -31,6 +31,9 @@ interface MenuItemDao {
 
     @Query("DELETE FROM menu_items WHERE code = :code")
     suspend fun deleteByCode(code: String)
+
+    @Query("DELETE FROM menu_items")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -49,6 +52,9 @@ interface OrderDao {
 
     @Query("UPDATE orders SET status = :status WHERE id = :orderId")
     suspend fun updateStatus(orderId: Long, status: String)
+
+    @Query("DELETE FROM orders")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -84,5 +90,26 @@ interface BotActivityLogDao {
     suspend fun insert(log: BotActivityLogEntity)
 
     @Query("DELETE FROM bot_activity_logs")
+    suspend fun clearAll()
+}
+
+@Dao
+interface CashflowDao {
+    @Query("SELECT * FROM cashflow_entries ORDER BY createdAtMillis DESC")
+    fun observeAll(): Flow<List<CashflowEntryEntity>>
+
+    @Query("SELECT COUNT(*) FROM cashflow_entries")
+    suspend fun count(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: CashflowEntryEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entries: List<CashflowEntryEntity>)
+
+    @Query("DELETE FROM cashflow_entries WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM cashflow_entries")
     suspend fun clearAll()
 }

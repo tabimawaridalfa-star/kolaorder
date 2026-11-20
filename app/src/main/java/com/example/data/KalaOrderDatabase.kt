@@ -12,8 +12,9 @@ import androidx.room.RoomDatabase
         BotSettingsEntity::class,
         BotContactStateEntity::class,
         BotActivityLogEntity::class,
+        CashflowEntryEntity::class,
     ],
-    version = 2,
+    version = 4,
     exportSchema = false,
 )
 abstract class KalaOrderDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class KalaOrderDatabase : RoomDatabase() {
     abstract fun botSettingsDao(): BotSettingsDao
     abstract fun botContactStateDao(): BotContactStateDao
     abstract fun botActivityLogDao(): BotActivityLogDao
+    abstract fun cashflowDao(): CashflowDao
 
     companion object {
         @Volatile

@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.PlaylistAdd
 import androidx.compose.material.icons.outlined.RestaurantMenu
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Remove
@@ -47,6 +49,7 @@ import com.example.ui.components.KalaMicroActionButton
 import com.example.ui.components.KalaOrderCard
 import com.example.ui.components.KalaPrimaryButton
 import com.example.ui.components.KalaSearchField
+import com.example.ui.components.KalaSecondaryButton
 import com.example.ui.components.MonospaceCodeTag
 import com.example.ui.components.SemanticPillBadge
 import com.example.ui.theme.BorderStrong
@@ -77,6 +80,8 @@ fun MenuScreen(
     onSearchChange: (String) -> Unit,
     onFilterSelect: (MenuFilter) -> Unit,
     onAddMenuClick: () -> Unit,
+    onOpenBulkMenu: () -> Unit,
+    onOpenTemplateMenu: () -> Unit,
     onEditMenuClick: (MenuItemRecord) -> Unit,
     onDeleteMenuClick: (MenuItemRecord) -> Unit,
     onAdjustStock: (String, Int) -> Unit,
@@ -91,31 +96,41 @@ fun MenuScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Header + Add Menu CTA
+            // Header + Bulk & Single Add Menu CTAs
             item(key = "menu_header") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Katalog Menu",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = TextPrimary,
-                        )
-                        Text(
-                            text = "${uiState.menuItems.size} menu • ${uiState.lowStockCount} stok menipis",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Katalog Menu",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                text = "${uiState.menuItems.size} menu • ${uiState.lowStockCount} stok menipis",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            KalaSecondaryButton(
+                                text = "Isi Cepat",
+                                onClick = onOpenBulkMenu,
+                                icon = Icons.Outlined.PlaylistAdd,
+                                modifier = Modifier.testTag("bulk_menu_button"),
+                            )
+                            KalaPrimaryButton(
+                                text = "Menu",
+                                onClick = onAddMenuClick,
+                                icon = Icons.Rounded.Add,
+                                modifier = Modifier.testTag("add_menu_button"),
+                            )
+                        }
                     }
-                    KalaPrimaryButton(
-                        text = stringResource(R.string.action_tambah_menu),
-                        onClick = onAddMenuClick,
-                        icon = Icons.Rounded.Add,
-                        modifier = Modifier.testTag("add_menu_button"),
-                    )
                 }
             }
 
@@ -157,11 +172,63 @@ fun MenuScreen(
             // Empty state or 2-column grid (12dp gutter)
             if (uiState.filteredMenuItems.isEmpty()) {
                 item(key = "menu_empty") {
-                    KalaEmptyState(
-                        icon = Icons.Outlined.RestaurantMenu,
-                        title = stringResource(R.string.empty_menu_title),
-                        description = stringResource(R.string.empty_menu_desc),
-                    )
+                    if (uiState.menuItems.isEmpty()) {
+                        KalaOrderCard(contentPadding = PaddingValues(20.dp)) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(50.dp)
+                                        .background(FillSubtle, KalaOrderShapes.Card),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.RestaurantMenu,
+                                        contentDescription = null,
+                                        tint = PrimaryEmerald,
+                                        modifier = Modifier.size(26.dp),
+                                    )
+                                }
+                                Text(
+                                    text = "Katalog Menu Masih Kosong",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextPrimary,
+                                )
+                                Text(
+                                    text = "Isi daftar menu usahamu dengan cepat agar bisa langsung dipakai untuk Order Kasir dan Bot Notifikasi WA.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                KalaPrimaryButton(
+                                    text = "Isi Banyak Menu Sekaligus",
+                                    onClick = onOpenBulkMenu,
+                                    icon = Icons.Outlined.PlaylistAdd,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("empty_menu_bulk_button"),
+                                )
+                                KalaSecondaryButton(
+                                    text = "Pilih Paket Template Usaha",
+                                    onClick = onOpenTemplateMenu,
+                                    icon = Icons.Outlined.AutoAwesome,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("empty_menu_template_button"),
+                                )
+                            }
+                        }
+                    } else {
+                        KalaEmptyState(
+                            icon = Icons.Outlined.RestaurantMenu,
+                            title = stringResource(R.string.empty_menu_title),
+                            description = stringResource(R.string.empty_menu_desc),
+                        )
+                    }
                 }
             } else {
                 items(

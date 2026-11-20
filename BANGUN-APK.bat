@@ -11,10 +11,8 @@ REM 1. Deteksi JAVA_HOME otomatis (JDK 17 / 21 atau JBR Android Studio)
 if not defined JAVA_HOME (
     if exist "C:\Program Files\Android\Android Studio\jbr\bin\java.exe" (
         set "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr"
-    ) else if exist "C:\Users\tabim\.gemini\antigravity\scratch\jdk17\jdk-17.0.21+9\bin\java.exe" (
-        set "JAVA_HOME=C:\Users\tabim\.gemini\antigravity\scratch\jdk17\jdk-17.0.21+9"
     ) else (
-        for /d %%D in ("C:\Program Files\Eclipse Adoptium\jdk-21*" "C:\Program Files\Eclipse Adoptium\jdk-17*" "C:\Program Files\Java\jdk-21*" "C:\Program Files\Java\jdk-17*") do (
+        for /d %%D in ("C:\Program Files\Eclipse Adoptium\jdk-21*" "C:\Program Files\Eclipse Adoptium\jdk-17*" "C:\Program Files\Microsoft\jdk-21*" "C:\Program Files\Microsoft\jdk-17*" "C:\Program Files\Java\jdk-21*" "C:\Program Files\Java\jdk-17*") do (
             if exist "%%~D\bin\java.exe" set "JAVA_HOME=%%~D"
         )
     )

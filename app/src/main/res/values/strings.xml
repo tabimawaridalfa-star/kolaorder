@@ -1,12 +1,42 @@
 <resources>
     <string name="app_name">KalaOrder</string>
-    <string name="store_subtitle">Warung Nusantara • Kasir UMKM</string>
+    <string name="store_subtitle">Kasir &amp; Bot WhatsApp UMKM</string>
 
     <!-- Navigation -->
     <string name="nav_antrean">Antrean</string>
     <string name="nav_menu">Menu</string>
+    <string name="nav_keuangan">Keuangan</string>
     <string name="nav_riwayat">Riwayat</string>
     <string name="nav_bot">Bot WA</string>
+
+    <!-- Creator Attribution & Voluntary Donation -->
+    <string name="creator_name">Alfa Tabi Mawarid</string>
+    <string name="creator_attribution">Dibuat oleh Alfa Tabi Mawarid • KalaOrder Kasir UMKM</string>
+    <string name="about_creator_title">Tentang KalaOrder &amp; Pembuat</string>
+    <string name="about_creator_role">Pengembang &amp; Pembuat Aplikasi</string>
+    <string name="donation_title">Traktir Kopi Pengembang</string>
+    <string name="donation_button_full">Traktir Kopi Pengembang (QRIS)</string>
+    <string name="donation_chip_label">Traktir Kopi</string>
+    <string name="donation_message">KalaOrder gratis dipakai selamanya untuk UMKM. Jika aplikasi ini membantu usahamu, traktiran kopi sukarela darimu sangat berarti untuk terus mengembangkan KalaOrder.</string>
+    <string name="donation_save_gallery">Simpan Galeri</string>
+    <string name="donation_share_qris">Bagikan QRIS</string>
+
+    <!-- Finance & Recap -->
+    <string name="finance_title">Keuangan</string>
+    <string name="finance_subtitle">Pembukuan otomatis, modal &amp; rekap periode</string>
+    <string name="finance_net_profit">Laba Bersih</string>
+    <string name="finance_cash_balance">Saldo Kas Total</string>
+    <string name="finance_order_income">Pemasukan Order</string>
+    <string name="finance_other_income">Pemasukan Lain</string>
+    <string name="finance_total_expense">Pengeluaran</string>
+    <string name="finance_capital">Modal Usaha</string>
+    <string name="finance_action_record">Catat Kas</string>
+    <string name="finance_action_recap">Rekap</string>
+    <string name="finance_action_export_csv">Ekspor CSV (Excel)</string>
+    <string name="finance_action_share_wa">Bagikan ke WA</string>
+    <string name="finance_search_placeholder">Cari keterangan kas, kategori, atau kode KO-…</string>
+    <string name="empty_finance_title">Belum ada catatan keuangan di periode ini</string>
+    <string name="empty_finance_desc">Selesaikan pesanan di Antrean atau tekan Catat Kas untuk menambahkan pengeluaran dan modal usaha.</string>
 
     <!-- Store & Bot Status -->
     <string name="status_toko_buka">TOKO BUKA</string>

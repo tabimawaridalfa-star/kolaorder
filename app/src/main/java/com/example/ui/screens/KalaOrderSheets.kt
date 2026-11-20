@@ -593,15 +593,31 @@ fun NewOrderBottomSheet(
                         style = MaterialTheme.typography.labelMedium,
                         color = TextSecondary,
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        menuItems.filter { !it.isOutOfStock }.forEach { menu ->
-                            val qty = manualQtyMap[menu.code] ?: 0
-                            Surface(
-                                shape = KalaOrderShapes.Medium,
-                                color = if (qty > 0) PrimarySoft else SurfaceWhite,
-                                border = BorderStroke(1.dp, if (qty > 0) StatusSelesaiBorder else BorderSubtle),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
+                    val availableMenus = menuItems.filter { !it.isOutOfStock }
+                    if (availableMenus.isEmpty()) {
+                        Surface(
+                            shape = KalaOrderShapes.Medium,
+                            color = FillSubtle,
+                            border = BorderStroke(1.dp, BorderSubtle),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = "Belum ada menu yang tersedia. Silakan isi daftar menu terlebih dahulu di tab Menu (bisa tambah satuan, isi banyak sekaligus, atau pilih template).",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(12.dp),
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            availableMenus.forEach { menu ->
+                                val qty = manualQtyMap[menu.code] ?: 0
+                                Surface(
+                                    shape = KalaOrderShapes.Medium,
+                                    color = if (qty > 0) PrimarySoft else SurfaceWhite,
+                                    border = BorderStroke(1.dp, if (qty > 0) StatusSelesaiBorder else BorderSubtle),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -649,6 +665,7 @@ fun NewOrderBottomSheet(
                                             contentDescription = "Tambah ${menu.name}",
                                             onClick = { manualQtyMap[menu.code] = qty + 1 },
                                         )
+                                        }
                                     }
                                 }
                             }

@@ -21,10 +21,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Coffee
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PointOfSale
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Security
@@ -62,6 +65,8 @@ import com.example.bot.WhatsAppAutoReplyEngine
 import com.example.data.BotActivityLogRecord
 import com.example.data.BotLogOutcome
 import com.example.data.BotSettings
+import com.example.data.CreatorInfo
+import com.example.ui.components.KalaDestructiveOutlineButton
 import com.example.ui.components.KalaFilterChip
 import com.example.ui.components.KalaOrderCard
 import com.example.ui.components.KalaPrimaryButton
@@ -108,6 +113,9 @@ fun BotSettingsScreen(
     onResetCooldowns: () -> Unit,
     onOpenWhatsAppSimulator: () -> Unit,
     onOpenManualOrder: () -> Unit,
+    onOpenResetDataDialog: () -> Unit,
+    onOpenSetupWizard: () -> Unit,
+    onOpenDonationSheet: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val settings = uiState.botSettings
@@ -701,6 +709,147 @@ fun BotSettingsScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // Manage & Selective Reset Business Data Card
+        item(key = "manage_reset_data_card") {
+            KalaOrderCard(
+                contentPadding = PaddingValues(16.dp),
+                modifier = Modifier.testTag("manage_reset_data_card"),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.DeleteSweep,
+                        contentDescription = null,
+                        tint = StatusDibatalkanText,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "Kelola & Reset Data Usaha",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary,
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Bersihkan data uji coba pesanan, catatan kas, atau buka ulang panduan isi toko & daftar menu kapan saja.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    KalaDestructiveOutlineButton(
+                        text = "Reset Data",
+                        onClick = onOpenResetDataDialog,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("open_reset_data_button"),
+                    )
+                    KalaSecondaryButton(
+                        text = "Panduan Awal",
+                        onClick = onOpenSetupWizard,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("reopen_setup_wizard_button"),
+                    )
+                }
+            }
+        }
+
+        // About App & Creator Attribution Card
+        item(key = "about_creator_card") {
+            KalaOrderCard(
+                contentPadding = PaddingValues(16.dp),
+                modifier = Modifier.testTag("about_creator_card"),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Surface(
+                        shape = KalaOrderShapes.Medium,
+                        color = PrimarySoft,
+                        border = BorderStroke(1.dp, StatusSelesaiBorder),
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.PersonOutline,
+                                contentDescription = stringResource(R.string.about_creator_title),
+                                tint = PrimaryEmerald,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.about_creator_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = "${CreatorInfo.APP_DISPLAY_TITLE} • v1.0",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text(
+                            text = stringResource(R.string.about_creator_role),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = CreatorInfo.CREATOR_NAME,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = PrimaryEmerald,
+                            modifier = Modifier.testTag("creator_name_text"),
+                        )
+                    }
+                    SemanticPillBadge(
+                        text = "UMKM Edition",
+                        backgroundColor = PrimarySoft,
+                        textColor = PrimaryEmerald,
+                        borderColor = StatusSelesaiBorder,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Aplikasi kasir, antrean dapur, bot notifikasi WhatsApp siaga 24 jam, dan pembukuan keuangan UMKM.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                KalaPrimaryButton(
+                    text = stringResource(R.string.donation_button_full),
+                    onClick = onOpenDonationSheet,
+                    icon = Icons.Outlined.Coffee,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("bot_about_donation_button"),
+                )
             }
         }
     }

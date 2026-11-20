@@ -1,6 +1,6 @@
 {
   "name": "KalaOrder",
-  "description": "Aplikasi kasir POS, manajemen antrean dapur, katalog menu, dan simulasi bot WhatsApp untuk UMKM kuliner Indonesia.",
+  "description": "Aplikasi kasir POS, antrean dapur, katalog menu, manajemen keuangan & rekap CSV/WhatsApp, serta Bot Auto-Reply WhatsApp 24 jam untuk UMKM Indonesia. Dibuat oleh Alfa Tabi Mawarid.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -120,4 +120,19 @@ object NotificationAccessHelper {
             true
         }.getOrDefault(false)
     }
+
+    fun sharePlainText(context: Context, title: String, text: String): Boolean {
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        val chooser = Intent.createChooser(sendIntent, title).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return runCatching {
+            context.startActivity(chooser)
+            true
+        }.getOrDefault(false)
+    }
 }

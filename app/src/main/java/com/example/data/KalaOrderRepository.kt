@@ -13,6 +13,7 @@ class KalaOrderRepository(
     private val botSettingsDao: BotSettingsDao,
     private val botContactStateDao: BotContactStateDao,
     private val botActivityLogDao: BotActivityLogDao,
+    private val cashflowDao: CashflowDao,
 ) {
     val menuItems: Flow<List<MenuItemRecord>> = menuItemDao.observeAll().map { list ->
         list.map { it.toRecord() }
@@ -30,17 +31,13 @@ class KalaOrderRepository(
         list.map { it.toRecord() }
     }
 
+    val cashflowEntries: Flow<List<CashflowEntryRecord>> = cashflowDao.observeAll().map { list ->
+        list.map { it.toRecord() }
+    }
+
     suspend fun ensureSeedData() {
         if (botSettingsDao.get() == null) {
             botSettingsDao.save(BotSettingsEntity.fromDomain(BotSettings()))
-        }
-
-        if (menuItemDao.count() == 0) {
-            menuItemDao.upsertAll(initialSeedMenu())
-        }
-
-        if (orderDao.count() == 0) {
-            orderDao.insertAll(initialSeedOrders())
         }
     }
 
@@ -96,6 +93,11 @@ class KalaOrderRepository(
         menuItemDao.upsert(MenuItemEntity.fromRecord(item))
     }
 
+    suspend fun saveMenuItemsBulk(items: List<MenuItemRecord>) {
+        if (items.isEmpty()) return
+        menuItemDao.upsertAll(items.map { MenuItemEntity.fromRecord(it) })
+    }
+
     suspend fun adjustMenuStock(code: String, delta: Int) {
         val current = menuItemDao.getByCode(code) ?: return
         val nextStock = (current.stock + delta).coerceAtLeast(0)
@@ -110,6 +112,74 @@ class KalaOrderRepository(
         botSettingsDao.save(BotSettingsEntity.fromDomain(settings))
     }
 
+    suspend fun completeInitialSetup(
+        storeName: String,
+        whatsappNumber: String,
+        initialCapitalAmount: Int,
+        initialMenus: List<MenuItemRecord>,
+    ) {
+        val current = getBotSettingsSnapshot()
+        val resolvedName = storeName.trim().ifBlank { current.storeName.ifBlank { "Usaha Saya" } }
+        botSettingsDao.save(
+            BotSettingsEntity.fromDomain(
+                current.copy(
+                    storeName = resolvedName,
+                    whatsappNumber = whatsappNumber.trim(),
+                    setupCompleted = true,
+                )
+            )
+        )
+
+        if (initialMenus.isNotEmpty()) {
+            menuItemDao.upsertAll(initialMenus.map { MenuItemEntity.fromRecord(it) })
+        }
+
+        if (initialCapitalAmount > 0) {
+            val now = System.currentTimeMillis()
+            val dateLabel = SimpleDateFormat("dd MMM yyyy", Locale("in", "ID")).format(Date(now))
+            cashflowDao.upsert(
+                CashflowEntryEntity(
+                    type = CashflowType.CAPITAL.name,
+                    category = "Modal Awal",
+                    title = "Modal Kas Awal Usaha",
+                    amount = initialCapitalAmount,
+                    note = "Dicatat saat pengaturan awal $resolvedName",
+                    dateLabel = dateLabel,
+                    createdAtMillis = now,
+                )
+            )
+        }
+    }
+
+    suspend fun resetSelectedData(selection: DataResetSelection) {
+        if (selection.clearOrders) {
+            orderDao.clearAll()
+        }
+        if (selection.clearCashflow) {
+            cashflowDao.clearAll()
+        }
+        if (selection.clearMenu) {
+            menuItemDao.clearAll()
+        }
+        if (selection.clearBotLogs) {
+            botActivityLogDao.clearAll()
+            botContactStateDao.clearAll()
+        }
+    }
+
+    suspend fun saveCashflowEntry(entry: CashflowEntryRecord) {
+        val label = entry.dateLabel.ifBlank {
+            SimpleDateFormat("dd MMM yyyy", Locale("in", "ID")).format(Date(entry.createdAtMillis))
+        }
+        cashflowDao.upsert(
+            CashflowEntryEntity.fromRecord(entry.copy(dateLabel = label))
+        )
+    }
+
+    suspend fun deleteCashflowEntry(id: Long) {
+        cashflowDao.deleteById(id)
+    }
+
     suspend fun createOrder(
         customerName: String,
         customerPhone: String,
@@ -119,7 +189,7 @@ class KalaOrderRepository(
         existingOrderCount: Int? = null,
     ): String {
         val baseCount = existingOrderCount ?: orderDao.count()
-        val nextNumber = 140 + baseCount + 1
+        val nextNumber = baseCount + 1
         val orderCode = "KO-${nextNumber.toString().padStart(4, '0')}"
         val total = items.sumOf { it.subtotal }
         val now = System.currentTimeMillis()
@@ -349,6 +419,67 @@ class KalaOrderRepository(
         )
     }
 
+    private fun initialSeedCashflow(): List<CashflowEntryEntity> {
+        val now = System.currentTimeMillis()
+        val day = 86_400_000L
+        val fmt = SimpleDateFormat("dd MMM yyyy", Locale("in", "ID"))
+
+        fun labelFor(millis: Long): String = fmt.format(Date(millis))
+
+        val twoDaysAgo = now - 2 * day
+        val yesterday = now - day
+        val earlierToday = now - 3 * 3_600_000L
+        val recentToday = now - 45 * 60_000L
+
+        return listOf(
+            CashflowEntryEntity(
+                type = CashflowType.CAPITAL.name,
+                category = "Modal Awal",
+                title = "Modal Kas Awal Bulan",
+                amount = 1_500_000,
+                note = "Dana operasional dan belanja awal warung",
+                dateLabel = labelFor(twoDaysAgo),
+                createdAtMillis = twoDaysAgo,
+            ),
+            CashflowEntryEntity(
+                type = CashflowType.EXPENSE.name,
+                category = "Bahan Baku",
+                title = "Belanja Pasar Pagi (Ayam, Beras, Bumbu)",
+                amount = 95_000,
+                note = "Stok bahan dapur utama harian",
+                dateLabel = labelFor(earlierToday),
+                createdAtMillis = earlierToday,
+            ),
+            CashflowEntryEntity(
+                type = CashflowType.EXPENSE.name,
+                category = "Gas & Listrik",
+                title = "Isi Ulang Gas LPG 3kg (2 Tabung)",
+                amount = 44_000,
+                note = "Cadangan dapur utama",
+                dateLabel = labelFor(yesterday),
+                createdAtMillis = yesterday,
+            ),
+            CashflowEntryEntity(
+                type = CashflowType.EXPENSE.name,
+                category = "Kemasan",
+                title = "Cup Es Jumbo & Kotak Nasi Kraft",
+                amount = 35_000,
+                note = "Stok kemasan takeaway & pesanan WA",
+                dateLabel = labelFor(recentToday),
+                createdAtMillis = recentToday,
+            ),
+            CashflowEntryEntity(
+                type = CashflowType.OTHER_INCOME.name,
+                category = "Catering / Pesanan Khusus",
+                title = "DP Pesanan Nasi Kotak Rapat RT",
+                amount = 150_000,
+                note = "Uang muka 10 kotak nasi goreng spesial",
+                dateLabel = labelFor(yesterday + 3_600_000L),
+                createdAtMillis = yesterday + 3_600_000L,
+            ),
+        )
+    }
+
     companion object {
         fun fromContext(context: Context): KalaOrderRepository {
             val db = KalaOrderDatabase.getInstance(context)
@@ -358,6 +489,7 @@ class KalaOrderRepository(
                 botSettingsDao = db.botSettingsDao(),
                 botContactStateDao = db.botContactStateDao(),
                 botActivityLogDao = db.botActivityLogDao(),
+                cashflowDao = db.cashflowDao(),
             )
         }
     }

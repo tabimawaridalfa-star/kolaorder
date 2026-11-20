@@ -1,18 +1,49 @@
+# Gradle & Kotlin caches
+.gradle/
+.gradle-local/
+.kotlin/
+
+# Build outputs
+/build/
+/app/build/
+/.build-outputs/
+/dist/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Android Studio / IntelliJ
 *.iml
-.gradle
-.kotlin
-/local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+/.idea/deploymentTargetDropDown.xml
+/.idea/render.experimental.xml
+
+# Local configuration & secrets
+/local.properties
 local.properties
 .env
+.env.*
+!.env.example
+google-services.json
+
+# Signing keys & generated binaries
+*.apk
+*.aab
+*.jks
+*.keystore
 debug.keystore
+!debug.keystore.base64
+
+# AI Studio workspace & temporary upload copies
+/.aistudio/
+/public/assets/aistudio/
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+*.log

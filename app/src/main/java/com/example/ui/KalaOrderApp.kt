@@ -30,9 +30,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.RestaurantMenu
@@ -73,17 +75,28 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.bot.NotificationAccessHelper
+import com.example.data.CashflowEntryRecord
 import com.example.data.MenuItemRecord
 import com.example.data.OrderChannel
 import com.example.data.OrderRecord
+import com.example.data.QrisDonationHelper
 import com.example.ui.screens.BotSettingsScreen
+import com.example.ui.screens.BulkMenuMode
+import com.example.ui.screens.BulkMenuSetupBottomSheet
+import com.example.ui.screens.CashflowEditorBottomSheet
+import com.example.ui.screens.DeleteCashflowConfirmDialog
 import com.example.ui.screens.DeleteMenuConfirmDialog
+import com.example.ui.screens.DonationQrisBottomSheet
+import com.example.ui.screens.FinanceRecapBottomSheet
+import com.example.ui.screens.FinanceScreen
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.InitialSetupDialog
 import com.example.ui.screens.MenuEditorBottomSheet
 import com.example.ui.screens.MenuScreen
 import com.example.ui.screens.NewOrderBottomSheet
 import com.example.ui.screens.OrderDetailBottomSheet
 import com.example.ui.screens.QueueScreen
+import com.example.ui.screens.SelectiveResetDataDialog
 import com.example.ui.theme.BgCanvas
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.KalaOrderMonoStyles
@@ -114,6 +127,50 @@ fun KalaOrderApp(
     var showMenuEditor by remember { mutableStateOf(false) }
     var editingMenuItem by remember { mutableStateOf<MenuItemRecord?>(null) }
     var deletingMenuItem by remember { mutableStateOf<MenuItemRecord?>(null) }
+    var showCashflowEditor by remember { mutableStateOf(false) }
+    var editingCashflowEntry by remember { mutableStateOf<CashflowEntryRecord?>(null) }
+    var deletingCashflowEntry by remember { mutableStateOf<CashflowEntryRecord?>(null) }
+    var showFinanceRecapSheet by remember { mutableStateOf(false) }
+    var bulkMenuSheetMode by remember { mutableStateOf<BulkMenuMode?>(null) }
+    var showResetDataDialog by remember { mutableStateOf(false) }
+    var showSetupWizardManually by remember { mutableStateOf(false) }
+    var showDonationSheet by remember { mutableStateOf(false) }
+
+    // Zero-permission SAF fallback for saving QRIS image on Android 7-9 (API 24-28)
+    val saveQrisLegacyLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/jpeg"),
+    ) { uri ->
+        if (uri != null) {
+            val saved = QrisDonationHelper.writeQrisToUri(context, uri)
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    if (saved) "Gambar QRIS berhasil disimpan!"
+                    else "Gagal menyimpan gambar QRIS. Coba pilih folder lain."
+                )
+            }
+        }
+    }
+
+    // Zero-permission Storage Access Framework CSV export launcher (Excel-ready UTF-8 BOM)
+    val exportCsvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri != null) {
+            val csvContent = viewModel.buildCurrentRecapCsv()
+            val saved = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(csvContent.toByteArray(Charsets.UTF_8))
+                    stream.flush()
+                } != null
+            }.getOrDefault(false)
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    if (saved) "File CSV Excel berhasil disimpan!"
+                    else "Gagal menyimpan file CSV. Coba pilih folder lain."
+                )
+            }
+        }
+    }
 
     // Runtime permission launcher for Android 13+ POST_NOTIFICATIONS
     val postNotificationLauncher = rememberLauncherForActivityResult(
@@ -168,6 +225,66 @@ fun KalaOrderApp(
 
     val openAppSettings = remember(context) {
         { NotificationAccessHelper.openAppDetailsSettings(context) }
+    }
+
+    val triggerExportCsv = remember(viewModel, exportCsvLauncher) {
+        { exportCsvLauncher.launch(viewModel.suggestedCsvFileName()) }
+    }
+
+    val triggerShareWhatsAppRecap = remember(context, viewModel) {
+        {
+            val text = viewModel.buildCurrentRecapText()
+            val openedWa = NotificationAccessHelper.openWhatsAppChat(
+                context = context,
+                rawPhone = "",
+                message = text,
+            )
+            if (!openedWa) {
+                NotificationAccessHelper.sharePlainText(
+                    context = context,
+                    title = "Rekap Keuangan KalaOrder",
+                    text = text,
+                )
+            }
+        }
+    }
+
+    val triggerShareOtherRecap = remember(context, viewModel) {
+        {
+            val text = viewModel.buildCurrentRecapText()
+            NotificationAccessHelper.sharePlainText(
+                context = context,
+                title = "Rekap Keuangan KalaOrder",
+                text = text,
+            )
+        }
+    }
+
+    val triggerSaveQrisToGallery = remember(context, saveQrisLegacyLauncher) {
+        {
+            if (QrisDonationHelper.canSaveDirectlyToMediaStore()) {
+                val saved = QrisDonationHelper.saveQrisToGalleryMediaStore(context)
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        if (saved) "QRIS disimpan ke Galeri (Pictures/KalaOrder)"
+                        else "Gagal menyimpan QRIS ke Galeri"
+                    )
+                }
+            } else {
+                saveQrisLegacyLauncher.launch(QrisDonationHelper.QRIS_FILE_NAME)
+            }
+        }
+    }
+
+    val triggerShareQris = remember(context) {
+        {
+            val shared = QrisDonationHelper.shareQrisImage(context)
+            if (!shared) {
+                scope.launch {
+                    snackbarHostState.showSnackbar("Tidak dapat membuka menu bagikan di perangkat ini")
+                }
+            }
+        }
     }
 
     BoxWithConstraints(
@@ -241,6 +358,7 @@ fun KalaOrderApp(
                                 onUpdateStatus = viewModel::updateOrderStatus,
                                 onSelectOrder = { selectedOrderForDetail = it },
                                 onOpenManualOrder = { newOrderSheetChannel = OrderChannel.KASIR },
+                                onOpenMenuTab = { activeTab = AppTab.MENU },
                             )
 
                             AppTab.MENU -> MenuScreen(
@@ -251,6 +369,8 @@ fun KalaOrderApp(
                                     editingMenuItem = null
                                     showMenuEditor = true
                                 },
+                                onOpenBulkMenu = { bulkMenuSheetMode = BulkMenuMode.BULK_TEXT },
+                                onOpenTemplateMenu = { bulkMenuSheetMode = BulkMenuMode.TEMPLATE },
                                 onEditMenuClick = { item ->
                                     editingMenuItem = item
                                     showMenuEditor = true
@@ -259,6 +379,30 @@ fun KalaOrderApp(
                                     deletingMenuItem = item
                                 },
                                 onAdjustStock = viewModel::adjustMenuStock,
+                            )
+
+                            AppTab.KEUANGAN -> FinanceScreen(
+                                uiState = uiState,
+                                onSelectPeriod = viewModel::onFinancePeriodSelect,
+                                onShiftMonth = viewModel::onShiftFinanceMonth,
+                                onResetToCurrentMonth = viewModel::onSelectCurrentFinanceMonth,
+                                onSearchChange = viewModel::onFinanceSearchChange,
+                                onAddCashflowClick = {
+                                    editingCashflowEntry = null
+                                    showCashflowEditor = true
+                                },
+                                onEditCashflowClick = { entry ->
+                                    editingCashflowEntry = entry
+                                    showCashflowEditor = true
+                                },
+                                onDeleteCashflowClick = { entry ->
+                                    deletingCashflowEntry = entry
+                                },
+                                onSelectOrder = { selectedOrderForDetail = it },
+                                onOpenRecapPreview = { showFinanceRecapSheet = true },
+                                onExportCsvClick = triggerExportCsv,
+                                onShareWhatsAppClick = triggerShareWhatsAppRecap,
+                                onOpenDonationSheet = { showDonationSheet = true },
                             )
 
                             AppTab.RIWAYAT -> HistoryScreen(
@@ -281,6 +425,9 @@ fun KalaOrderApp(
                                 onResetCooldowns = viewModel::resetContactCooldowns,
                                 onOpenWhatsAppSimulator = { newOrderSheetChannel = OrderChannel.WHATSAPP },
                                 onOpenManualOrder = { newOrderSheetChannel = OrderChannel.KASIR },
+                                onOpenResetDataDialog = { showResetDataDialog = true },
+                                onOpenSetupWizard = { showSetupWizardManually = true },
+                                onOpenDonationSheet = { showDonationSheet = true },
                             )
                         }
                     }
@@ -410,6 +557,103 @@ fun KalaOrderApp(
             onConfirm = { viewModel.deleteMenuItem(item) },
         )
     }
+
+    if (showCashflowEditor) {
+        CashflowEditorBottomSheet(
+            editingEntry = editingCashflowEntry,
+            onDismiss = {
+                showCashflowEditor = false
+                editingCashflowEntry = null
+            },
+            onSave = { entry, isEdit ->
+                viewModel.saveCashflowEntry(entry, isEdit)
+            },
+        )
+    }
+
+    deletingCashflowEntry?.let { entry ->
+        DeleteCashflowConfirmDialog(
+            entry = entry,
+            onDismiss = { deletingCashflowEntry = null },
+            onConfirm = { viewModel.deleteCashflowEntry(entry) },
+        )
+    }
+
+    if (showFinanceRecapSheet) {
+        val recapText = remember(uiState.financeSummary, uiState.botSettings.storeName) {
+            viewModel.buildCurrentRecapText()
+        }
+        FinanceRecapBottomSheet(
+            summary = uiState.financeSummary,
+            storeName = uiState.botSettings.storeName,
+            formattedRecapText = recapText,
+            onDismiss = { showFinanceRecapSheet = false },
+            onExportCsv = {
+                showFinanceRecapSheet = false
+                triggerExportCsv()
+            },
+            onShareWhatsApp = {
+                showFinanceRecapSheet = false
+                triggerShareWhatsAppRecap()
+            },
+            onShareOther = {
+                showFinanceRecapSheet = false
+                triggerShareOtherRecap()
+            },
+        )
+    }
+
+    bulkMenuSheetMode?.let { mode ->
+        BulkMenuSetupBottomSheet(
+            initialMode = mode,
+            existingMenuCodes = uiState.menuItems.map { it.code }.toSet(),
+            onDismiss = { bulkMenuSheetMode = null },
+            onSaveMenus = { items -> viewModel.saveMenuItemsBulk(items) },
+        )
+    }
+
+    if (showResetDataDialog) {
+        SelectiveResetDataDialog(
+            orderCount = uiState.orders.size,
+            cashflowCount = uiState.cashflowEntries.size,
+            menuCount = uiState.menuItems.size,
+            botLogCount = uiState.botActivityLogs.size,
+            onDismiss = { showResetDataDialog = false },
+            onConfirmReset = { selection -> viewModel.resetSelectedData(selection) },
+        )
+    }
+
+    val shouldShowInitialSetup = showSetupWizardManually ||
+        (uiState.isInitialized && !uiState.botSettings.setupCompleted)
+    if (shouldShowInitialSetup) {
+        InitialSetupDialog(
+            currentSettings = uiState.botSettings,
+            existingMenuCodes = uiState.menuItems.map { it.code }.toSet(),
+            onSkip = {
+                showSetupWizardManually = false
+                if (!uiState.botSettings.setupCompleted) {
+                    viewModel.skipInitialSetup()
+                }
+            },
+            onComplete = { storeName, whatsappNumber, initialCapital, initialMenus ->
+                showSetupWizardManually = false
+                viewModel.completeInitialSetup(
+                    storeName = storeName,
+                    whatsappNumber = whatsappNumber,
+                    initialCapitalAmount = initialCapital,
+                    initialMenus = initialMenus,
+                )
+            },
+        )
+    }
+
+    if (showDonationSheet) {
+        DonationQrisBottomSheet(
+            onDismiss = { showDonationSheet = false },
+            onSaveToGallery = { triggerSaveQrisToGallery() },
+            onShareQris = { triggerShareQris() },
+        )
+    }
 }
 
 /**
@@ -438,7 +682,7 @@ private fun KalaOrderBottomBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -464,14 +708,14 @@ private fun KalaOrderBottomBar(
                                         color = if (selected) PrimarySoft else androidx.compose.ui.graphics.Color.Transparent,
                                         shape = KalaOrderShapes.Pill,
                                     )
-                                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     imageVector = tabIcon(tab, selected),
                                     contentDescription = tab.label,
                                     tint = contentColor,
-                                    modifier = Modifier.size(22.dp),
+                                    modifier = Modifier.size(21.dp),
                                 )
                             }
                             if (tab == AppTab.ANTREAN && activeQueueCount > 0) {
@@ -520,6 +764,7 @@ private fun KalaSnackbarHost(hostState: SnackbarHostState) {
 private fun tabIcon(tab: AppTab, selected: Boolean): ImageVector = when (tab) {
     AppTab.ANTREAN -> if (selected) Icons.AutoMirrored.Filled.ReceiptLong else Icons.AutoMirrored.Outlined.ReceiptLong
     AppTab.MENU -> if (selected) Icons.Filled.RestaurantMenu else Icons.Outlined.RestaurantMenu
+    AppTab.KEUANGAN -> if (selected) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
     AppTab.RIWAYAT -> if (selected) Icons.Filled.History else Icons.Outlined.History
     AppTab.BOT -> if (selected) Icons.Filled.SmartToy else Icons.Outlined.SmartToy
 }

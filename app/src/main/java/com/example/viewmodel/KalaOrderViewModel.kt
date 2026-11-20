@@ -10,6 +10,12 @@ import com.example.bot.NotificationAccessHelper
 import com.example.bot.WhatsAppAutoReplyEngine
 import com.example.data.BotActivityLogRecord
 import com.example.data.BotSettings
+import com.example.data.CashflowEntryRecord
+import com.example.data.DataResetSelection
+import com.example.data.FinancePeriod
+import com.example.data.FinanceRecapEngine
+import com.example.data.FinanceSummaryState
+import com.example.data.FinanceYearMonth
 import com.example.data.KalaOrderRepository
 import com.example.data.MenuCategory
 import com.example.data.MenuItemRecord
@@ -31,6 +37,7 @@ import kotlinx.coroutines.launch
 enum class AppTab(val label: String) {
     ANTREAN("Antrean"),
     MENU("Menu"),
+    KEUANGAN("Keuangan"),
     RIWAYAT("Riwayat"),
     BOT("Bot WA"),
 }
@@ -66,6 +73,9 @@ data class FilterState(
     val menuFilter: MenuFilter = MenuFilter.SEMUA,
     val historySearch: String = "",
     val historyFilter: HistoryFilter = HistoryFilter.SEMUA,
+    val financePeriod: FinancePeriod = FinancePeriod.MONTHLY,
+    val selectedFinanceMonth: FinanceYearMonth = FinanceYearMonth.current(),
+    val financeSearch: String = "",
 )
 
 data class BackgroundBotReadiness(
@@ -89,6 +99,7 @@ data class BackgroundBotReadiness(
 }
 
 data class KalaOrderUiState(
+    val isInitialized: Boolean = false,
     val orders: List<OrderRecord> = emptyList(),
     val filteredQueueOrders: List<OrderRecord> = emptyList(),
     val menuItems: List<MenuItemRecord> = emptyList(),
@@ -96,6 +107,8 @@ data class KalaOrderUiState(
     val filteredHistoryOrders: List<OrderRecord> = emptyList(),
     val botSettings: BotSettings = BotSettings(),
     val botActivityLogs: List<BotActivityLogRecord> = emptyList(),
+    val cashflowEntries: List<CashflowEntryRecord> = emptyList(),
+    val financeSummary: FinanceSummaryState = FinanceSummaryState(),
     val readiness: BackgroundBotReadiness = BackgroundBotReadiness(),
     val filters: FilterState = FilterState(),
     val activeQueueCount: Int = 0,
@@ -129,8 +142,9 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
             repository.menuItems,
             repository.botSettings,
             repository.botActivityLogs,
-        ) { orders, menuItems, settings, logs ->
-            CoreDataSnapshot(orders, menuItems, settings, logs)
+            repository.cashflowEntries,
+        ) { orders, menuItems, settings, logs, cashflows ->
+            CoreDataSnapshot(orders, menuItems, settings, logs, cashflows)
         }
 
         val readinessFlow = combine(
@@ -211,7 +225,16 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
                 matchesFilter && matchesQuery
             }
 
+            val financeSummary = FinanceRecapEngine.computeSummary(
+                orders = orders,
+                cashflowEntries = data.cashflowEntries,
+                period = filters.financePeriod,
+                selectedMonth = filters.selectedFinanceMonth,
+                searchQuery = filters.financeSearch,
+            )
+
             KalaOrderUiState(
+                isInitialized = true,
                 orders = orders,
                 filteredQueueOrders = filteredQueue,
                 menuItems = menuItems,
@@ -219,6 +242,8 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
                 filteredHistoryOrders = filteredHistory,
                 botSettings = settings,
                 botActivityLogs = data.logs,
+                cashflowEntries = data.cashflowEntries,
+                financeSummary = financeSummary,
                 readiness = readiness,
                 filters = filters,
                 activeQueueCount = waiting + processing,
@@ -289,6 +314,63 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
     fun onMenuFilterSelect(filter: MenuFilter) = filterState.update { it.copy(menuFilter = filter) }
     fun onHistorySearchChange(query: String) = filterState.update { it.copy(historySearch = query) }
     fun onHistoryFilterSelect(filter: HistoryFilter) = filterState.update { it.copy(historyFilter = filter) }
+
+    // Finance filters & cashflow actions
+    fun onFinancePeriodSelect(period: FinancePeriod) =
+        filterState.update { it.copy(financePeriod = period) }
+
+    fun onShiftFinanceMonth(deltaMonths: Int) =
+        filterState.update {
+            it.copy(
+                financePeriod = FinancePeriod.MONTHLY,
+                selectedFinanceMonth = it.selectedFinanceMonth.shiftMonths(deltaMonths),
+            )
+        }
+
+    fun onSelectCurrentFinanceMonth() =
+        filterState.update {
+            it.copy(
+                financePeriod = FinancePeriod.MONTHLY,
+                selectedFinanceMonth = FinanceYearMonth.current(),
+            )
+        }
+
+    fun onFinanceSearchChange(query: String) =
+        filterState.update { it.copy(financeSearch = query) }
+
+    fun saveCashflowEntry(entry: CashflowEntryRecord, isEdit: Boolean) {
+        viewModelScope.launch {
+            repository.saveCashflowEntry(entry)
+            val verb = if (isEdit) "diperbarui" else "dicatat"
+            _snackbarMessages.tryEmit("${entry.type.label} \"${entry.title}\" berhasil $verb")
+        }
+    }
+
+    fun deleteCashflowEntry(entry: CashflowEntryRecord) {
+        viewModelScope.launch {
+            repository.deleteCashflowEntry(entry.id)
+            _snackbarMessages.tryEmit("Catatan kas \"${entry.title}\" dihapus")
+        }
+    }
+
+    fun buildCurrentRecapText(): String {
+        val state = uiState.value
+        return FinanceRecapEngine.buildWhatsAppRecapText(
+            summary = state.financeSummary,
+            storeName = state.botSettings.storeName,
+        )
+    }
+
+    fun buildCurrentRecapCsv(): String {
+        val state = uiState.value
+        return FinanceRecapEngine.buildExcelCsvContent(
+            summary = state.financeSummary,
+            storeName = state.botSettings.storeName,
+        )
+    }
+
+    fun suggestedCsvFileName(): String =
+        FinanceRecapEngine.suggestedCsvFileName(uiState.value.financeSummary)
 
     // Order actions
     fun updateOrderStatus(order: OrderRecord, newStatus: OrderStatus) {
@@ -368,6 +450,58 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun saveMenuItemsBulk(items: List<MenuItemRecord>) {
+        if (items.isEmpty()) return
+        viewModelScope.launch {
+            repository.saveMenuItemsBulk(items)
+            _snackbarMessages.tryEmit("${items.size} menu berhasil ditambahkan ke katalog")
+        }
+    }
+
+    fun completeInitialSetup(
+        storeName: String,
+        whatsappNumber: String,
+        initialCapitalAmount: Int,
+        initialMenus: List<MenuItemRecord>,
+    ) {
+        viewModelScope.launch {
+            repository.completeInitialSetup(
+                storeName = storeName,
+                whatsappNumber = whatsappNumber,
+                initialCapitalAmount = initialCapitalAmount,
+                initialMenus = initialMenus,
+            )
+            val summaryNote = if (initialMenus.isNotEmpty()) {
+                "Toko siap digunakan dengan ${initialMenus.size} menu!"
+            } else {
+                "Toko siap digunakan dalam keadaan kosong bersih!"
+            }
+            _snackbarMessages.tryEmit(summaryNote)
+        }
+    }
+
+    fun skipInitialSetup() {
+        val current = uiState.value.botSettings
+        viewModelScope.launch {
+            repository.saveBotSettings(current.copy(setupCompleted = true))
+            _snackbarMessages.tryEmit("Siap pakai! Kamu bisa mengisi menu kapan saja di tab Menu")
+        }
+    }
+
+    fun resetSelectedData(selection: DataResetSelection) {
+        if (!selection.hasAnySelection) return
+        viewModelScope.launch {
+            repository.resetSelectedData(selection)
+            val clearedParts = buildList {
+                if (selection.clearOrders) add("pesanan")
+                if (selection.clearCashflow) add("catatan kas")
+                if (selection.clearMenu) add("katalog menu")
+                if (selection.clearBotLogs) add("log bot")
+            }
+            _snackbarMessages.tryEmit("Berhasil mengosongkan ${clearedParts.joinToString(", ")}")
+        }
+    }
+
     fun adjustMenuStock(code: String, delta: Int) {
         viewModelScope.launch {
             repository.adjustMenuStock(code, delta)
@@ -443,5 +577,6 @@ class KalaOrderViewModel(application: Application) : AndroidViewModel(applicatio
         val menuItems: List<MenuItemRecord>,
         val settings: BotSettings,
         val logs: List<BotActivityLogRecord>,
+        val cashflowEntries: List<CashflowEntryRecord>,
     )
 }

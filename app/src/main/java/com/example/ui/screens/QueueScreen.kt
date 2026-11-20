@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.PointOfSale
+import androidx.compose.material.icons.outlined.RestaurantMenu
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
@@ -83,6 +84,7 @@ fun QueueScreen(
     onUpdateStatus: (OrderRecord, OrderStatus) -> Unit,
     onSelectOrder: (OrderRecord) -> Unit,
     onOpenManualOrder: () -> Unit,
+    onOpenMenuTab: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -258,11 +260,53 @@ fun QueueScreen(
         // Order Queue Cards or Empty State
         if (uiState.filteredQueueOrders.isEmpty()) {
             item(key = "queue_empty") {
-                KalaEmptyState(
-                    icon = Icons.AutoMirrored.Outlined.ReceiptLong,
-                    title = stringResource(R.string.empty_queue_title),
-                    description = stringResource(R.string.empty_queue_desc),
-                )
+                if (uiState.orders.isEmpty() && uiState.menuItems.isEmpty()) {
+                    KalaOrderCard(contentPadding = PaddingValues(20.dp)) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(PrimarySoft, KalaOrderShapes.Card),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.RestaurantMenu,
+                                    contentDescription = null,
+                                    tint = PrimaryEmerald,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                            Text(
+                                text = "Antrean Bersih • Siap Jualan!",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary,
+                            )
+                            Text(
+                                text = "Katalog menu masih kosong. Isi daftar menu usahamu dulu agar kasir dan Bot WA bisa menerima pesanan.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            KalaPrimaryButton(
+                                text = "Isi Daftar Menu",
+                                onClick = onOpenMenuTab,
+                                icon = Icons.Outlined.RestaurantMenu,
+                                modifier = Modifier.testTag("queue_empty_open_menu_button"),
+                            )
+                        }
+                    }
+                } else {
+                    KalaEmptyState(
+                        icon = Icons.AutoMirrored.Outlined.ReceiptLong,
+                        title = stringResource(R.string.empty_queue_title),
+                        description = stringResource(R.string.empty_queue_desc),
+                    )
+                }
             }
         } else {
             items(
